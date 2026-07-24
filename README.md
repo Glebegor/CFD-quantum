@@ -43,6 +43,7 @@
 ### Area boundary attributes
 - 512 × 512 cells for LBM and QLBM; Ansys/OpenFOAM: 256 × 256 meters
 - 10 shots = 1 second, 1 shot = 0.1 second, velocity = 1 m/s in ANSYS/OpenFOAM, LBM, and QLBM
+- Time of animation 4 sec, soo 40 shoots on 1 animation.
 - Default temperature: 23°C
 
 ### Constants
