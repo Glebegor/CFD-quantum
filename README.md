@@ -1,46 +1,39 @@
 # Quantum CFD
 
 ## Core
-### Hlavní cíl projektu
-- Zjistit, zda je možné provádět simulace CFD pomocí kvantových metod.
-- Porovnat klasický přístup CFD s kvantovým přístupem (např. QLB, HHL a další relevantní metody).
-- Identifikovat, jaké technologie, algoritmy a zdroje jsou pro takový přístup potřeba.
-- Vyhodnotit výhody a omezení kvantového řešení.
-- Porovnat kvantový přístup také s metodou LBM.
+### Project goal
+- Determine whether CFD simulations can be performed using quantum methods.
+- Compare the classical CFD approach with quantum methods, including QLB, HHL, and related techniques.
+- Identify the technologies, algorithms, and resources required for this approach.
+- Evaluate the advantages and limitations of quantum-based CFD solutions.
+- Compare the quantum approach with LBM as well.
 
-### Optimalizace tvarů
-- Optimalizace tvaru křídla, rakety, difuzoru a podobných objektů pomocí strojového učení.
-- Porovnaní Quantum modelu a Classical.
+### Shape optimization
+- Optimization of wing, rocket, diffuser, and similar geometries using machine learning.
+- Comparison of quantum and classical models.
 
 ### Measure accuracy
-- classical method
-- classical samples
-- classical median error (bps)
+- Classical method
+- Classical samples
+- Classical median error (bps)
 - QPU median point error (bps)
 - QPU median point + CL (bps)
 - QPU certified success
 
-
-
-
-- 2D prostor
-- 128px*128px area size
-- Kridlo a Horni cast rakety
-- profil kridla
-- bunky kvadry nebo tecky
-
-
+### Attributes
+- 2D space
+- 512 × 512 px area size
+- Wing and upper section of the rocket
+- Wing profile
 - LBM
-- Ansys
+- Ansys/OpenFOAM
 - QLBM
-- ask pani about QLBM, size of cells etc.
-
-
-
+- NACA 0012 profile
+- Length: 128 cells
+- Angle: 0°, 5°, 10°
+- Left to right
+- Laminar, incompressible
+- 512 × 512
+- Determine how to add the wing to the quantum state
 
 ![alt text](<Images/Screenshot 2026-07-24 at 13.16.16.png>)
-- NACA 0012 profil
-- 30-32 bunky delka tetevy
-- uhel 0,5,10
-- zleva doprava
-- laminarni, nestlacne
