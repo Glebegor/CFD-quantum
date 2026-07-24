@@ -37,3 +37,19 @@
 - Determine how to add the wing to the quantum state
 
 ![alt text](<Images/Screenshot 2026-07-24 at 13.16.16.png>)
+
+
+
+### Area boundary attributes
+- 512 × 512 cells for LBM and QLBM; Ansys/OpenFOAM: 256 × 256 meters
+- 10 shots = 1 second, 1 shot = 0.1 second, velocity = 1 m/s in ANSYS/OpenFOAM, LBM, and QLBM
+- Default temperature: 23°C
+
+### Constants
+- Air density: 1.225 kg/m³
+- Dynamic viscosity of air: 1.81 × 10⁻⁵ Pa·s
+- Kinematic viscosity of air: 1.48 × 10⁻⁵ m²/s
+- Speed of sound in air: 343 m/s
+- Specific heat ratio: 1.4
+- Gas constant for air: 287 J/(kg·K)
+- Reference temperature: 23°C
