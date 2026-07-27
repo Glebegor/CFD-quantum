@@ -226,3 +226,49 @@ snappyHexMesh -overwrite
 pwd
 ls
 exit
+ls
+checkMesh
+paraFoam
+checkMesh
+paraFoam
+checkMesh
+paraFoam
+paraFoam
+paraFoam
+paraFoam
+paraFoam
+paraFoam
+paraFoam
+paraFoam
+paraFoam
+exit
+paraFoam
+paraFoam
+paraFoam
+paraFoam
+checkMesh
+exit
+checkMesh
+foamListTimes -rm
+checkMesh
+checkMesh
+checkMesh
+paraFoam
+paraFoam
+checkMesh
+checkMesh
+checkMesh
+checkMesh
+foamListTimes -rm
+checkMesh
+paraFoam
+paraFoam
+icoFoam | tee log.icoFoam
+paraFoam
+icoFoam | tee log.icoFoam
+checkMesh
+icoFoam | tee log.icoFoam
+checkMesh
+icoFoam | tee log.icoFoam
+ls
+exit

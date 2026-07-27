@@ -6,4 +6,5 @@ FoamFile
     object      physicalProperties;
 }
 
-nu              [0 2 -1 0 0 0 0] 1.48e-05;
+// Match LBM: nu = U * chord / Re = 1 * 4.2 / 100.
+nu              [0 2 -1 0 0 0 0] 0.042;

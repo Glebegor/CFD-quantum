@@ -1,9 +1,9 @@
 /*--------------------------------*- C++ -*----------------------------------*\
   =========                 |
-  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Version:  dev
-     \\/     M anipulation  |
+  \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \    /   O peration     | Website: https://openfoam.org
+    \  /    A nd           | Version:  dev
+     \/     M anipulation  |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -12,47 +12,51 @@ FoamFile
     location    "constant/polyMesh";
     object      boundary;
 }
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-6
+7
 (
     inlet
     {
         type            patch;
-        nFaces          200;
-        startFace       113800;
+        nFaces          511;
+        startFace       515747;
     }
     outlet
     {
         type            patch;
-        nFaces          200;
-        startFace       114000;
-    }
-    top
-    {
-        type            wall;
-        inGroups        List<word> 1(wall);
-        nFaces          2000;
-        startFace       114200;
+        nFaces          511;
+        startFace       516258;
     }
     bottom
     {
         type            wall;
-        inGroups        List<word> 1(wall);
-        nFaces          2000;
-        startFace       116200;
+        nFaces          511;
+        startFace       516769;
+    }
+    top
+    {
+        type            wall;
+        nFaces          511;
+        startFace       517280;
+    }
+    obstacle
+    {
+        type            wall;
+        nFaces          426;
+        startFace       517791;
     }
     front
     {
-        type            patch;
-        nFaces          4000;
-        startFace       118200;
+        type            empty;
+        nFaces          258491;
+        startFace       518217;
     }
     back
     {
-        type            patch;
-        nFaces          4000;
-        startFace       122200;
+        type            empty;
+        nFaces          258491;
+        startFace       776708;
     }
 )
 

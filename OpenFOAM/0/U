@@ -16,29 +16,28 @@ boundaryField
         type            fixedValue;
         value           uniform (1 0 0);
     }
-
     outlet
     {
         type            zeroGradient;
     }
-
     top
     {
         type            slip;
     }
-
     bottom
     {
+        type            slip;
+    }
+    obstacle
+    {
         type            noSlip;
     }
-
     front
     {
-        type            noSlip;
+        type            empty;
     }
-
     back
     {
-        type            noSlip;
+        type            empty;
     }
 }

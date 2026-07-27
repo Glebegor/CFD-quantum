@@ -9,15 +9,17 @@ FoamFile
 
 application     icoFoam;
 
-startFrom       latestTime;
+startFrom       startTime;
 startTime       0;
 stopAt          endTime;
 
-endTime         1;
-deltaT          0.001;
+// 40 simulation steps of 0.1 s each.
+endTime         4;
+deltaT          0.1;
 
+// Write every step: t = 0.1, 0.2, ..., 4.0 (40 snapshots).
 writeControl    timeStep;
-writeInterval   100;
+writeInterval   1;
 purgeWrite      0;
 
 writeFormat     ascii;

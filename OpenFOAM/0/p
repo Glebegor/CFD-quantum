@@ -15,30 +15,29 @@ boundaryField
     {
         type            zeroGradient;
     }
-
     outlet
     {
         type            fixedValue;
         value           uniform 0;
     }
-
     top
     {
         type            zeroGradient;
     }
-
     bottom
     {
         type            zeroGradient;
     }
-
-    front
+    obstacle
     {
         type            zeroGradient;
     }
-
+    front
+    {
+        type            empty;
+    }
     back
     {
-        type            zeroGradient;
+        type            empty;
     }
 }
