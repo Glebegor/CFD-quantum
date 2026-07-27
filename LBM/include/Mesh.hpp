@@ -3,6 +3,7 @@
 #include "D2Q9.hpp"
 
 #include <array>
+#include <functional>
 #include <vector>
 #include <cstddef>
 
@@ -64,12 +65,13 @@ public:
   // Grid resolution (nodes per axis). Zero until generate() is called.
   int resolution = 0;
 
-  // Build the node cloud and the quad-cell connectivity.
-  void generate(
-      int resolution,
-      double cylinderRadius,
-      double cylinderX,
-      double cylinderY);
+  // Predicate deciding whether a point (x, y) lies inside a solid body.
+  using SolidPredicate = std::function<bool(double, double)>;
+
+  // Build the node cloud and the quad-cell connectivity. The obstacle
+  // is described entirely by `isSolid`, so the mesh is decoupled from
+  // any particular geometry.
+  void generate(int resolution, const SolidPredicate &isSolid);
 
   // Build the per-direction interpolation stencils for ISLBM streaming.
   void buildInterpolation();

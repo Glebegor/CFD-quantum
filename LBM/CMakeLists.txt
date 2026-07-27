@@ -29,6 +29,7 @@ add_executable(
 
 
     src/Mesh.cpp
+    src/Geometry.cpp
     src/Boundary.cpp
     src/Collision.cpp
     src/Streaming.cpp

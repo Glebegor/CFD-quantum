@@ -15,9 +15,7 @@
 */
 void Mesh::generate(
     int res,
-    double cylinderRadius,
-    double cylinderX,
-    double cylinderY)
+    const SolidPredicate &isSolid)
 {
   resolution = res;
 
@@ -50,13 +48,8 @@ void Mesh::generate(
         node.y += jitter(rng);
       }
 
-      // Solid mask: nodes inside the cylinder.
-      const double dx = node.x - cylinderX;
-      const double dy = node.y - cylinderY;
-      if (std::sqrt(dx * dx + dy * dy) < cylinderRadius)
-      {
-        node.solid = true;
-      }
+      // Solid mask: delegate the obstacle test to the geometry.
+      node.solid = isSolid(node.x, node.y);
 
       nodes.push_back(node);
     }

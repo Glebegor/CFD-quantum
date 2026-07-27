@@ -35,6 +35,7 @@ BUILD_DIR = build
 SOURCES = \
 	$(APP_DIR)/main.cpp \
 	$(SRC_DIR)/Mesh.cpp \
+	$(SRC_DIR)/Geometry.cpp \
 	$(SRC_DIR)/Boundary.cpp \
 	$(SRC_DIR)/Collision.cpp \
 	$(SRC_DIR)/Streaming.cpp \

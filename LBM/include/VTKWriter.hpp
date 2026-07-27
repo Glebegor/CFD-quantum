@@ -2,6 +2,7 @@
 
 #include "Mesh.hpp"
 #include "LBM.hpp"
+#include "Parameters.hpp"
 
 #include <string>
 
@@ -18,8 +19,12 @@ class VTKWriter
 {
 
 public:
+  // Coordinates are written in metres and velocity in m/s, using the
+  // physical scaling in `params`, so ParaView animates real units and
+  // the Particle Tracer integrates consistently.
   static void write(
       const std::string &filename,
       const Mesh &mesh,
-      const LBMSolver &solver);
+      const LBMSolver &solver,
+      const Parameters &params);
 };

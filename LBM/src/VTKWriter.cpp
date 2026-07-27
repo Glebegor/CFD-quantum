@@ -21,7 +21,8 @@ namespace
 void VTKWriter::write(
     const std::string &filename,
     const Mesh &mesh,
-    const LBMSolver &solver)
+    const LBMSolver &solver,
+    const Parameters &params)
 {
   std::ofstream file(filename);
   if (!file)
@@ -30,6 +31,10 @@ void VTKWriter::write(
   const auto &f = solver.distributions();
   const std::size_t N = mesh.nodeCount();
   const std::size_t C = mesh.cellCount();
+
+  // Conversion factors: lattice/domain units -> physical units.
+  const double xScale = params.lengthScale();   // domain unit -> m
+  const double vScale = params.velocityScale();  // lattice u   -> m/s
 
   // Full precision so ParaView reads exact values.
   file.precision(9);
@@ -44,7 +49,7 @@ void VTKWriter::write(
 
   file << "POINTS " << N << " float\n";
   for (const auto &node : mesh.nodes)
-    file << node.x << " " << node.y << " 0\n";
+    file << node.x * xScale << " " << node.y * xScale << " 0\n";
 
   // ---------------------------------------------------------------
   // Topology: one quad (4 nodes) per cell.
@@ -91,10 +96,10 @@ void VTKWriter::write(
 
   file << "\nPOINT_DATA " << N << "\n";
 
-  // Velocity vector field.
+  // Velocity vector field (m/s).
   file << "VECTORS velocity float\n";
   for (std::size_t id = 0; id < N; id++)
-    file << ux[id] << " " << uy[id] << " 0\n";
+    file << ux[id] * vScale << " " << uy[id] * vScale << " 0\n";
 
   // Density scalar field.
   file << "\nSCALARS density float 1\n"
@@ -102,11 +107,11 @@ void VTKWriter::write(
   for (std::size_t id = 0; id < N; id++)
     file << rho[id] << "\n";
 
-  // Velocity-magnitude scalar (convenient for contours in ParaView).
+  // Velocity-magnitude scalar in m/s (convenient for contours).
   file << "\nSCALARS velocity_magnitude float 1\n"
        << "LOOKUP_TABLE default\n";
   for (std::size_t id = 0; id < N; id++)
-    file << std::sqrt(ux[id] * ux[id] + uy[id] * uy[id]) << "\n";
+    file << std::sqrt(ux[id] * ux[id] + uy[id] * uy[id]) * vScale << "\n";
 
   // Solid mask.
   file << "\nSCALARS solid int 1\n"
