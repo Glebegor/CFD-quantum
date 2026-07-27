@@ -2,27 +2,29 @@
 
 #include "D2Q9.hpp"
 
-#include <array>
-#include <vector>
 #include <cstddef>
 
+/*
+    BGK single-relaxation-time collision operator.
+
+    The relaxation frequency omega is supplied by the configuration
+    layer (Parameters) so that no viscosity / Reynolds physics is
+    hardcoded here.
+*/
 class BGKCollision
 {
 
-private:
-  double omega;
-
 public:
-  BGKCollision(
-      double reynolds);
+  explicit BGKCollision(double omega);
 
+  // Relax the distributions at node `id` towards local equilibrium.
+  // Performs numerical sanity checks and aborts loudly on corruption.
   void apply(
+      LBMConstants::Distributions &f,
+      std::size_t id) const;
 
-      std::array<
-          std::vector<double>,
-          9> &f,
+  [[nodiscard]] double relaxationFrequency() const { return omega_; }
 
-      size_t id
-
-  );
+private:
+  double omega_;
 };

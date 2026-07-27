@@ -1,136 +1,51 @@
 #include "LBM.hpp"
-
 #include "Boundary.hpp"
 
-#include <omp.h>
-
-LBMSolver::LBMSolver(
-
-    Mesh &m,
-
-    double Re
-
-    )
-    : mesh(m),
-
-      collision(Re)
-
+LBMSolver::LBMSolver(Mesh &mesh, const Parameters &params)
+    : mesh_(mesh),
+      params_(params),
+      collision_(params.omega())
 {
+  const std::size_t n = mesh_.nodes.size();
 
-  size_t N =
-      mesh.nodes.size();
+  for (auto &direction : f_)
+    direction.assign(n, 0.0);
 
-  for (auto &direction : f)
-  {
-    direction.resize(N);
-  }
-
-  for (auto &direction : fNext)
-  {
-    direction.resize(N);
-  }
+  for (auto &direction : fNext_)
+    direction.assign(n, 0.0);
 }
 
 void LBMSolver::initialize()
 {
+  // Uniform flow at the inlet velocity: every population is set to the
+  // corresponding equilibrium value (rho = 1, u = U_inlet, v = 0).
+  const double u = params_.inletVelocity;
 
-#pragma omp parallel for
-
-  for (long id = 0;
-       id < (long)mesh.nodes.size();
-       id++)
+#pragma omp parallel for schedule(static)
+  for (long id = 0; id < static_cast<long>(mesh_.nodes.size()); id++)
   {
-
-    double rho = 1.0;
-
-    double ux = 0.1;
-
-    double uy = 0.0;
-
-    for (int q = 0; q < 9; q++)
-    {
-
-      double cu =
-
-          LBMConstants::cx[q] *
-              ux
-
-          +
-
-          LBMConstants::cy[q] *
-              uy;
-
-      f[q][id] =
-
-          LBMConstants::weights[q]
-
-          *
-
-          rho
-
-          *
-
-          (
-
-              1.0
-
-              +
-
-              cu /
-                  LBMConstants::cs2
-
-              +
-
-              0.5 *
-                  cu * cu /
-                  (LBMConstants::cs2 *
-                   LBMConstants::cs2)
-
-              -
-
-              0.5 *
-                  (ux * ux +
-                   uy * uy) /
-                  LBMConstants::cs2
-
-          );
-    }
+    for (int q = 0; q < LBMConstants::Q; q++)
+      f_[q][id] = LBMConstants::equilibrium(q, 1.0, u, 0.0);
   }
 }
 
 void LBMSolver::step()
 {
-
-#pragma omp parallel for
-
-  for (long id = 0;
-       id < (long)mesh.nodes.size();
-       id++)
+  // 1. Collision (BGK) — in place on the fluid nodes.
+#pragma omp parallel for schedule(static)
+  for (long id = 0; id < static_cast<long>(mesh_.nodes.size()); id++)
   {
-
-    if (mesh.nodes[id].solid)
+    if (mesh_.nodes[id].solid)
       continue;
-
-    collision.apply(
-        f,
-        id);
+    collision_.apply(f_, id);
   }
 
-  streaming.apply(
+  // 2. Streaming (ISLBM interpolation) with a double-buffer swap.
+  streaming_.apply(mesh_, f_, fNext_);
 
-      mesh,
+  // 3. No-slip on the cylinder.
+  Boundary::bounceBack(mesh_, f_);
 
-      f,
-
-      fNext
-
-  );
-
-  Boundary::bounceBack(
-
-      mesh,
-
-      f
-
-  );
+  // 4. External flow conditions on the domain edges.
+  Boundary::applyDomain(mesh_, f_, params_.inletVelocity);
 }

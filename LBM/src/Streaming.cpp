@@ -1,82 +1,51 @@
 #include "Streaming.hpp"
 
-#include <omp.h>
+#include <utility>
 
 void ISLBMStreaming::apply(
-
-    Mesh &mesh,
-
-    std::array<
-        std::vector<double>,
-        9> &f,
-
-    std::array<
-        std::vector<double>,
-        9> &fNext
-
-)
+    const Mesh &mesh,
+    LBMConstants::Distributions &f,
+    LBMConstants::Distributions &fNext) const
 {
+  const long n = static_cast<long>(mesh.nodes.size());
 
-#pragma omp parallel for
-
-  for (long id = 0;
-       id < (long)mesh.nodes.size();
-       id++)
+#pragma omp parallel for schedule(static)
+  for (long id = 0; id < n; id++)
   {
+    const Node &node = mesh.nodes[id];
 
-    Node &node =
-        mesh.nodes[id];
-
+    // Solid nodes do not stream; carry their state across the buffer
+    // swap so the bounce-back step operates on a consistent state.
     if (node.solid)
+    {
+      for (int q = 0; q < LBMConstants::Q; q++)
+        fNext[q][id] = f[q][id];
       continue;
+    }
 
     /*
-        ISLBM streaming
+        Off-lattice streaming:
 
+            fNext_q(x) = sum_k w_k * f_q(neighbour_k)
 
-        místo:
-
-        f[q][x-e]
-
-
-        děláme:
-
-
-        sum(
-            interpolationWeight *
-            neighbourDistribution
-        )
-
-
+        where the stencil for direction q interpolates the departure
+        point x - e_q. The reconstruction reads only from `f`
+        (post-collision) and writes only to `fNext`, so there is no
+        read/write aliasing across nodes.
     */
-
-    for (int q = 0; q < 9; q++)
+    for (int q = 0; q < LBMConstants::Q; q++)
     {
+      const auto &nb = node.stencil[q];
+      const auto &w = node.stencilWeights[q];
 
       double value = 0.0;
-
-      for (size_t k = 0;
-           k < node.neighbours.size();
-           k++)
-      {
-
-        int neighbour =
-            node.neighbours[k];
-
-        value +=
-
-            node.weights[k]
-
-            *
-
-            f[q][neighbour];
-      }
+      for (std::size_t k = 0; k < nb.size(); k++)
+        value += w[k] * f[q][nb[k]];
 
       fNext[q][id] = value;
     }
   }
 
-  std::swap(
-      f,
-      fNext);
+  // Double-buffer swap: `f` now holds the streamed populations.
+  std::swap(f, fNext);
 }

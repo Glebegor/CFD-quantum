@@ -1,139 +1,72 @@
 #include "Collision.hpp"
+
 #include <cmath>
-#include <vector>
-#include <array>
-#include <cstddef>
-#include <omp.h>
+#include <cstdlib>
+#include <iostream>
 
-BGKCollision::BGKCollision(
-    double reynolds)
+namespace
 {
+  // Emit a detailed diagnostic and terminate. Silent numerical
+  // corruption is never allowed to propagate.
+  [[noreturn]] void fail(
+      const char *what,
+      std::size_t id,
+      const LBMConstants::Distributions &f)
+  {
+    std::cerr << "\nLBM INSTABILITY: " << what << "\n"
+              << "  node: " << id << "\n";
+    for (int q = 0; q < LBMConstants::Q; q++)
+      std::cerr << "  f[" << q << "] = " << f[q][id] << "\n";
+    std::cerr << std::flush;
+    std::abort();
+  }
+}
 
-  /*
-      Navier-Stokes:
-
-          Re = U L / nu
-
-
-      LBM viscosity:
-
-          nu = cs² (tau - 0.5)
-
-
-      omega = 1/tau
-
-
-      Pro jednoduchost:
-
-          U = 0.1
-          L = 1
-
-  */
-
-  double U = 0.1;
-  double L = 1.0;
-
-  double nu =
-      U * L / reynolds;
-
-  double tau =
-      0.5 +
-      nu / LBMConstants::cs2;
-
-  omega =
-      1.0 / tau;
+BGKCollision::BGKCollision(double omega)
+    : omega_(omega)
+{
+  // A valid BGK relaxation frequency lies in (0, 2). Values outside
+  // this range mean the derived viscosity / tau is unphysical.
+  if (!std::isfinite(omega_) || omega_ <= 0.0 || omega_ >= 2.0)
+  {
+    std::cerr << "LBM CONFIG ERROR: relaxation frequency omega = "
+              << omega_ << " is outside the stable range (0, 2).\n"
+              << "Check Reynolds number, inlet velocity and resolution.\n";
+    std::abort();
+  }
 }
 
 void BGKCollision::apply(
-
-    std::array<
-        std::vector<double>,
-        9> &f,
-
-    size_t id
-
-)
+    LBMConstants::Distributions &f,
+    std::size_t id) const
 {
+  // --- reconstruct macroscopic moments ---
+  for (int q = 0; q < LBMConstants::Q; q++)
+    if (!std::isfinite(f[q][id]))
+      fail("non-finite distribution before collision", id, f);
 
-  double rho = 0.0;
+  double rho, ux, uy;
+  LBMConstants::computeMoments(f, id, rho, ux, uy);
 
-  double ux = 0.0;
+  // --- sanity checks: density must be positive & finite ---
+  if (!std::isfinite(rho) || rho <= 0.0)
+    fail("non-positive or non-finite density", id, f);
 
-  double uy = 0.0;
+  if (!std::isfinite(ux) || !std::isfinite(uy))
+    fail("non-finite velocity", id, f);
 
-  /*
-      Macroscopic quantities
+  // --- velocity ceiling: catch divergence before it becomes NaN ---
+  if (ux * ux + uy * uy >
+      LBMConstants::maxVelocity * LBMConstants::maxVelocity)
+    fail("velocity exceeded stability limit (Mach too high)", id, f);
 
-      rho = sum(fi)
-
-      u = sum(fi*ci)/rho
-
-  */
-
-  for (int q = 0; q < 9; q++)
+  // --- BGK relaxation towards equilibrium: f += omega (feq - f) ---
+  for (int q = 0; q < LBMConstants::Q; q++)
   {
+    const double feq = LBMConstants::equilibrium(q, rho, ux, uy);
+    f[q][id] += omega_ * (feq - f[q][id]);
 
-    double fq =
-        f[q][id];
-
-    rho += fq;
-
-    ux +=
-        fq *
-        LBMConstants::cx[q];
-
-    uy +=
-        fq *
-        LBMConstants::cy[q];
-  }
-
-  ux /= rho;
-
-  uy /= rho;
-
-  /*
-      BGK collision:
-
-
-      f = f - omega(f-feq)
-
-  */
-
-  for (int q = 0; q < 9; q++)
-  {
-
-    double cu =
-        LBMConstants::cx[q] * ux +
-        LBMConstants::cy[q] * uy;
-
-    double u2 =
-        ux * ux +
-        uy * uy;
-
-    double feq =
-
-        LBMConstants::weights[q] *
-        rho *
-        (1.0 +
-         cu /
-             LBMConstants::cs2
-
-         +
-
-         0.5 *
-             cu * cu /
-             (LBMConstants::cs2 *
-              LBMConstants::cs2)
-
-         -
-
-         0.5 *
-             u2 /
-             LBMConstants::cs2);
-
-    f[q][id] +=
-        omega *
-        (feq -
-         f[q][id]);
+    if (!std::isfinite(f[q][id]))
+      fail("collision produced a non-finite value", id, f);
   }
 }
