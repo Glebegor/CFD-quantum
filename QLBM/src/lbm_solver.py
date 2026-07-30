@@ -41,6 +41,33 @@ def equilibrium(density, velocity):
     )
 
 
+def apply_channel_boundaries(f, inlet_velocity_lattice):
+    """Apply a fixed left inlet and an open zero-gradient right outlet.
+
+    The outlet copies the populations from the adjacent interior cell. This
+    prevents the periodic x-streaming used by ``np.roll``/``StreamG`` from
+    wrapping the left inlet back into the right edge. The y direction remains
+    periodic.
+    """
+    populations = np.asarray(f, dtype=float)
+    if populations.ndim != 3 or populations.shape[0] != 9:
+        raise ValueError("f must have shape (9, ny, nx)")
+    if populations.shape[2] < 3:
+        raise ValueError("the domain must contain at least 3 x cells")
+
+    ny = populations.shape[1]
+
+    # x = 0: prescribed velocity inlet.
+    inlet_density = np.ones((ny, 1), dtype=float)
+    inlet_velocity = np.zeros((ny, 1, 2), dtype=float)
+    inlet_velocity[..., 0] = inlet_velocity_lattice
+    populations[:, :, 0:1] = equilibrium(inlet_density, inlet_velocity)
+
+    # x = nx - 1: open zero-normal-gradient outlet.
+    populations[:, :, -1] = populations[:, :, -2]
+    return populations
+
+
 class D2Q9Solver:
     """BGK solver with left velocity inlet, right outlet and periodic y."""
 
@@ -84,15 +111,10 @@ class D2Q9Solver:
                 axis=(0, 1),
             )
 
-        # Left velocity inlet: impose rho=1 and u=(u_in, 0) by equilibrium.
-        inlet_density = np.ones((self.ny, 1), dtype=float)
-        inlet_velocity = np.zeros((self.ny, 1, 2), dtype=float)
-        inlet_velocity[..., 0] = self.inlet_velocity_lattice
-        streamed[:, :, :1] = equilibrium(inlet_density, inlet_velocity)
-
-        # Right zero-gradient outlet. The y direction remains periodic.
-        streamed[:, :, -1] = streamed[:, :, -2]
-        self.f = streamed
+        self.f = apply_channel_boundaries(
+            streamed,
+            self.inlet_velocity_lattice,
+        )
         return self.f
 
     def run_steps(self, count):
@@ -139,36 +161,57 @@ def save_snapshot(
     metadata,
     history,
 ):
+    """Persist complete data while excluding the fixed inlet from plots."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = output_dir / f"step_{step:04d}"
 
     speed = np.linalg.norm(fields["velocity"], axis=-1)
+    # x=0 is a prescribed inlet and would dominate otherwise useful plots.
+    # Keep it in NPZ data, but show only physical interior/outlet cells.
+    visible = np.s_[:, 1:]
+    x_extent = (0.5, f.shape[2] - 0.5, -0.5, f.shape[1] - 0.5)
     figure, axes = plt.subplots(3, 3, figsize=(18, 14))
     plots = (
-        (fields["density"], "Density", "kg/m³", "viridis"),
-        (fields["pressure"], "Absolute pressure", "Pa", "coolwarm"),
-        (fields["gauge_pressure"], "Gauge pressure", "Pa", "coolwarm"),
-        (speed, "Velocity magnitude", "m/s", "magma"),
-        (fields["velocity"][..., 0], "Horizontal velocity $u_x$", "m/s", "coolwarm"),
-        (fields["velocity"][..., 1], "Vertical velocity $u_y$", "m/s", "coolwarm"),
+        (fields["density"][visible], "Density", "kg/m³", "viridis"),
+        (fields["pressure"][visible], "Absolute pressure", "Pa", "coolwarm"),
+        (fields["gauge_pressure"][visible], "Gauge pressure", "Pa", "coolwarm"),
+        (speed[visible], "Velocity magnitude", "m/s", "magma"),
+        (
+            fields["velocity"][..., 0][visible],
+            "Horizontal velocity $u_x$",
+            "m/s",
+            "coolwarm",
+        ),
+        (
+            fields["velocity"][..., 1][visible],
+            "Vertical velocity $u_y$",
+            "m/s",
+            "coolwarm",
+        ),
     )
     for axis, (values, title, label, cmap) in zip(axes.flat[:6], plots):
-        image = axis.imshow(values, origin="lower", cmap=cmap, aspect="auto")
-        axis.set_title(title)
+        image = axis.imshow(
+            values,
+            origin="lower",
+            cmap=cmap,
+            aspect="auto",
+            extent=x_extent,
+        )
+        axis.set_title(f"{title} (inlet x=0 hidden)")
         axis.set_xlabel("x cell")
         axis.set_ylabel("y cell")
         figure.colorbar(image, ax=axis, label=label)
 
     # Subsample the vector field to keep the plot readable on large grids.
-    stride = max(1, min(f.shape[1], f.shape[2]) // 16)
-    yy, xx = np.mgrid[0 : f.shape[1] : stride, 0 : f.shape[2] : stride]
+    stride = max(1, min(f.shape[1], f.shape[2] - 1) // 16)
+    yy, xx = np.mgrid[0 : f.shape[1] : stride, 1 : f.shape[2] : stride]
     axes[2, 0].quiver(
         xx,
         yy,
-        fields["velocity"][::stride, ::stride, 0],
-        fields["velocity"][::stride, ::stride, 1],
-        speed[::stride, ::stride],
+        fields["velocity"][::stride, 1::stride, 0],
+        fields["velocity"][::stride, 1::stride, 1],
+        speed[::stride, 1::stride],
         cmap="plasma",
         angles="xy",
         scale_units="xy",
@@ -177,14 +220,14 @@ def save_snapshot(
     axes[2, 0].set_title("Velocity vector field")
     axes[2, 0].set_xlabel("x cell")
     axes[2, 0].set_ylabel("y cell")
-    axes[2, 0].set_xlim(-0.5, f.shape[2] - 0.5)
+    axes[2, 0].set_xlim(0.5, f.shape[2] - 0.5)
     axes[2, 0].set_ylim(-0.5, f.shape[1] - 0.5)
     axes[2, 0].set_aspect("equal")
     axes[2, 0].grid(alpha=0.2)
 
-    population_totals = np.sum(f, axis=(1, 2))
+    population_totals = np.sum(f[:, :, 1:], axis=(1, 2))
     axes[2, 1].bar(np.arange(9), population_totals, color="tab:blue")
-    axes[2, 1].set_title("Total D2Q9 populations")
+    axes[2, 1].set_title("D2Q9 populations (inlet excluded)")
     axes[2, 1].set_xlabel("direction")
     axes[2, 1].set_ylabel(r"$\sum_{x,y} f_i$")
     axes[2, 1].set_xticks(np.arange(9))
@@ -295,6 +338,9 @@ def run_cfd_series(params):
             reference_pressure,
             velocity_scale,
         )
+        plotted_density = fields["density"][:, 1:]
+        plotted_pressure = fields["pressure"][:, 1:]
+        plotted_speed = np.linalg.norm(fields["velocity"][:, 1:], axis=-1)
         metadata = {
             "schema": "d2q9-bgk-physical-snapshot-v1",
             "snapshot": snapshot,
@@ -313,24 +359,23 @@ def run_cfd_series(params):
                 "right": "zero-gradient outlet",
                 "top_bottom": "periodic",
             },
+            "plot_excludes_x_cells": [0],
             "density_min_max": [
-                float(fields["density"].min()),
-                float(fields["density"].max()),
+                float(plotted_density.min()),
+                float(plotted_density.max()),
             ],
             "pressure_min_max_pa": [
-                float(fields["pressure"].min()),
-                float(fields["pressure"].max()),
+                float(plotted_pressure.min()),
+                float(plotted_pressure.max()),
             ],
             "velocity_magnitude_min_max_m_s": [
-                float(np.linalg.norm(fields["velocity"], axis=-1).min()),
-                float(np.linalg.norm(fields["velocity"], axis=-1).max()),
+                float(plotted_speed.min()),
+                float(plotted_speed.max()),
             ],
-            "mean_density_kg_m3": float(fields["density"].mean()),
-            "max_velocity_m_s": float(
-                np.linalg.norm(fields["velocity"], axis=-1).max()
-            ),
+            "mean_density_kg_m3": float(plotted_density.mean()),
+            "max_velocity_m_s": float(plotted_speed.max()),
             "pressure_range_pa": float(
-                fields["pressure"].max() - fields["pressure"].min()
+                plotted_pressure.max() - plotted_pressure.min()
             ),
         }
         snapshots.append(metadata)

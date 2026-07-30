@@ -6,7 +6,7 @@ SHOW_RESULTS = True
 RESULT_PLOT = "output/qlbm_results.png"
 
 # Cells
-CELLS_SIZE = 4
+CELLS_SIZE = 16
 
 # Directions
 # 6  2  5
@@ -28,8 +28,8 @@ D = [
 D_NUMBER = 9
 
 # Registers
-REG_X_SIZE = 2
-REG_Y_SIZE = 2
+REG_X_SIZE = 4
+REG_Y_SIZE = 4
 REG_D_SIZE = 4
 
 # QPU basis-state streaming smoke test.  Since this input is classical and
@@ -67,12 +67,12 @@ CFD_TIME_SERIES_DIR = "output/cfd_series"
 
 # Full hybrid QLBM proof of concept. Collision and boundaries are classical;
 # the complete f_i field is amplitude-encoded and streamed by StreamG.
-HYBRID_CELLS_SIZE = 4
+HYBRID_CELLS_SIZE = 32
 HYBRID_LATTICE_INLET_VELOCITY = 0.03
 HYBRID_RELAXATION_TIME = 0.8
 HYBRID_SHOTS = 32768
 HYBRID_SNAPSHOT_COUNT = 40
-HYBRID_QPU_SNAPSHOT_COUNT = 1
+HYBRID_QPU_SNAPSHOT_COUNT = 20
 HYBRID_AER_OUTPUT_DIR = "output/hybrid_aer"
 HYBRID_QPU_OUTPUT_DIR = "output/hybrid_qpu"
 

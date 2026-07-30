@@ -6,14 +6,17 @@ simulátor i skutečný IBM Quantum backend. Výsledky každého časového sní
 ukládá jako obrázek a jako numerická data pro následnou rekonstrukci hustoty,
 rychlosti a tlaku.
 
-> Současný stav projektu není kompletní CFD řešič. Implementován a na QPU
-> testován je streaming jednoho zakódovaného basis stavu. Collision operator,
-> inicializace úplného pole populací, křídlo a jeho okrajové podmínky zatím
-> nejsou součástí QPU časového kroku.
->
-> Pro výpočet makroskopických polí je navíc k dispozici klasický referenční
-> D2Q9 BGK solver. Ten už propaguje celé pole populací a počítá density,
-> velocity a pressure, ale neběží na QPU.
+Projekt obsahuje tři úrovně implementace:
+
+1. původní basis-state experiment pro samostatné ověření `StreamG`;
+2. klasický referenční D2Q9 BGK solver;
+3. hybridní QLBM, ve kterém jsou collision a okrajové podmínky klasické,
+   zatímco streaming úplného populačního pole probíhá kvantovým obvodem.
+
+Hybridní varianta počítá density, velocity a pressure a podporuje ideální
+Aer simulátor i experimentální IBM QPU backend. Nejde však o plně kvantový
+CFD solver: BGK collision, inlet/outlet a makroskopická rekonstrukce stále
+probíhají na klasickém procesoru.
 
 ## Matematický model D2Q9
 
@@ -365,6 +368,199 @@ Výstupy jsou v `output/cfd_series/`. Každé NPZ obsahuje úplné `f`, SI i
 lattice varianty density/velocity/pressure a gauge pressure. Na konci se
 automaticky vytvoří GIF a MP4.
 
+## Plný hybridní QLBM prototyp
+
+Hybridní solver je implementován v `src/hybrid_qlbm.py`. Zachovává původní
+obecnou bránu `StreamG`, ale na rozdíl od basis-state testu pracuje se všemi
+buňkami a všemi devíti D2Q9 populacemi současně.
+
+### Rozdělení klasické a kvantové části
+
+| Operace | Aer hybrid | QPU hybrid |
+|---|---|---|
+| Inicializace \(f_i\) | klasická | klasická |
+| Výpočet \(\rho,\mathbf{u},f_i^{eq}\) | klasický | klasický |
+| BGK collision | klasická | klasická |
+| Příprava amplitudového stavu | kvantový obvod simulovaný na Aer | kvantový obvod na IBM QPU |
+| D2Q9 streaming `StreamG` | kvantový obvod simulovaný na Aer | kvantový obvod na IBM QPU |
+| Rekonstrukce \(f_i\) | ze statevector pravděpodobností | z naměřených counts |
+| Inlet/outlet conditions | klasické | klasické |
+| Density, velocity, pressure | klasické | klasické |
+
+Jeden hybridní časový krok má tento datový tok:
+
+```text
+f(t)
+  -> klasický BGK collision
+  -> f*
+  -> amplitudová příprava |psi_f*>
+  -> kvantový StreamG
+  -> pravděpodobnosti/counts
+  -> rekonstrukce f(t + dt)
+  -> inlet/outlet boundary conditions
+  -> density, velocity, pressure
+```
+
+BGK collision před streamingem používá
+
+\[
+f_i^*=f_i-\frac{1}{\tau}(f_i-f_i^{eq}).
+\]
+
+### Amplitudové kódování úplného pole
+
+Použitý stav:
+
+\[
+|\psi_f\rangle
+=\sum_{x,y,d}
+\sqrt{\frac{f_d(y,x)}{\sum_{q,a,b}f_q(b,a)}}\,|x,y,d\rangle.
+\]
+
+Po streamingu dávají ideální pravděpodobnosti:
+
+\[
+P(x,y,d)=
+\frac{f_d^{\mathrm{streamed}}(y,x)}
+{\sum_{q,a,b}f_q(b,a)}.
+\]
+
+Normalizační konstanta
+
+\[
+M=\sum_{d,y,x}f_d(y,x)
+\]
+
+se uloží před spuštěním obvodu. Po získání pravděpodobností se populace
+rekonstruují vztahem \(f_d=M P(x,y,d)\). Funkce
+`probabilities_to_populations` přijímá pouze fyzikální směry 0–8 a reportuje
+jejich celkovou pravděpodobnost. Na ideálním Aer běhu musí být tato hodnota
+prakticky 100 %. Na QPU její pokles ukazuje únik do neplatných direction
+stavů 9–15.
+
+### Kvantový streaming
+
+`StreamG` realizuje unitární periodický posun
+
+\[
+|x,y,d\rangle\mapsto
+|(x+c_{d,x})\bmod N_x,\,
+  (y+c_{d,y})\bmod N_y,\,
+  d\rangle.
+\]
+
+Protože je operace lineární, jedna aplikace brány streamuje amplitudy všech
+buněk a směrů v superpozici. Test
+`tests/test_hybrid_qlbm.py` porovnává rekonstruované celé pole s klasickým
+D2Q9 streamingem, nikoliv pouze jeden basis state.
+
+### Aer režim
+
+Aer varianta používá `AerSimulator(method="statevector")`. Pravděpodobnosti
+se získají z přesného statevectoru, takže zde nevzniká sampling noise:
+
+```sh
+make run-hybrid-aer
+```
+
+Výchozí konfigurace provede 40 časových kroků po 0,1 s, tedy interval
+0–4 s. Výstupy jsou v:
+
+```text
+output/hybrid_aer/
+```
+
+### Experimentální QPU režim
+
+Stejnou amplitudovou přípravu a `StreamG` lze transpileovat a spustit na IBM
+QPU:
+
+```sh
+make run-hybrid-qpu
+```
+
+Výstupy:
+
+```text
+output/hybrid_qpu/
+```
+
+QPU vrací konečný počet měření. Pro bitstring odpovídající \((x,y,d)\)
+odhadujeme
+
+\[
+\hat P(x,y,d)=\frac{n_{xyd}}{N_{\mathrm{shots}}}.
+\]
+
+Rekonstrukce úplného pole je proto zatížena sampling noise, gate errors,
+readout errors a chybami z hlubokého transpileovaného obvodu. Každý další
+časový krok navíc používá rekonstruované hlučné pole jako vstup následujícího
+kroku, takže chyby se mohou kumulovat.
+
+Výchozí hybridní síť je z tohoto důvodu pouze 4×4. Aer provádí 40 kroků,
+zatímco QPU režim standardně provede jediný experimentální krok:
+
+```python
+HYBRID_CELLS_SIZE = 4
+HYBRID_LATTICE_INLET_VELOCITY = 0.03
+HYBRID_RELAXATION_TIME = 0.8
+HYBRID_SNAPSHOT_COUNT = 40
+HYBRID_QPU_SNAPSHOT_COUNT = 20
+HYBRID_SHOTS = 32768
+```
+
+Při `TIME_STEP = 0.1` odpovídá 20 QPU snímků časovému intervalu
+\(0.1,\ldots,2.0\) s. Každý časový krok vytváří samostatný QPU job se
+`HYBRID_SHOTS = 32768` měřeními; celá série tedy vyžaduje 20 hardwarových
+jobů a až 655 360 měření. Pole rekonstruované z jednoho hlučného kroku se
+použije jako vstup dalšího kroku, takže se hardwarové chyby v čase kumulují.
+
+Výchozí QPU režim není validované aerodynamické řešení. Obecná příprava
+amplitud a direction-controlled streaming vytvářejí hluboký obvod. Při
+hodnocení experimentu je proto nutné kontrolovat:
+
+- `valid_direction_probability`;
+- hloubku transpileovaného obvodu;
+- počet dvouqubitových `cz` bran;
+- zachování celkové hmotnosti;
+- rozsah density, velocity a pressure;
+- odchylku od ideálního Aer výsledku.
+
+### Výstupní data
+
+Každý krok ukládá numerická data a vizualizaci. Výstupní adresář obsahuje
+zejména:
+
+```text
+step_XXXX.npz          úplné f a makroskopická pole
+step_XXXX.json         metadata a diagnostika běhu
+step_XXXX.png          density, pressure a velocity
+manifest.json          seznam a parametry kroků
+qlbm_animation.gif     časová animace
+qlbm_animation.mp4     časová animace
+```
+
+NPZ soubory lze načíst například takto:
+
+```python
+import numpy as np
+
+data = np.load("output/hybrid_aer/step_0040.npz")
+f = data["f"]
+density = data["density"]
+velocity = data["velocity"]
+pressure = data["pressure"]
+```
+
+### Co hybridní QLBM znamená
+
+Kvantová část nyní nahrazuje streamingový operátor klasického LBM. Neznamená
+to automatické kvantové zrychlení celého CFD výpočtu: příprava obecného
+amplitudového stavu a získání celého pole měřením jsou nákladné a QPU hardware
+je hlučný. Implementace slouží jako korektní funkční prototyp a základ pro
+další práci na efektivnější přípravě stavů, collision obvodu, error mitigation
+a fyzikálních boundary conditions včetně překážky.
+
 ## Spuštění
 
 Instalace:
@@ -401,6 +597,18 @@ Plný referenční BGK inlet výpočet:
 
 ```sh
 make run-cfd
+```
+
+Plný hybridní 4×4 výpočet na Aer:
+
+```sh
+make run-hybrid-aer
+```
+
+Jeden experimentální plný hybridní krok na QPU:
+
+```sh
+make run-hybrid-qpu
 ```
 
 Oba time-series cíle nejprve odstraní `output/time_series/`, aby se nemíchala
@@ -454,20 +662,36 @@ pressure = snapshot["pressure"]  # (ny, nx)
 
 ## Okrajové podmínky a další vývoj
 
-Aktuálně je implementována periodická hranice pomocí modulární aritmetiky.
-Pro simulaci obtékání křídla je ještě potřeba doplnit:
+Hybridní prototyp obsahuje úplné pole populací, BGK collision, inlet/outlet
+a převod makroskopických polí do SI jednotek. Samotný `StreamG` používá
+periodické modulo; po rekonstrukci pole se jeho periodické chování v ose x
+přepíše dvěma explicitními hranicemi:
 
-1. úplnou inicializaci \(f_i\) ve všech buňkách;
-2. BGK/MRT collision;
-3. inlet a outlet boundary conditions;
-4. bounce-back na povrchu křídla;
-5. masku pevné oblasti `solid_mask.shape == (ny, nx)`;
-6. převod lattice jednotek na metry, sekundy, m/s a Pa;
-7. Reynoldsovo číslo, viskozitu a konzistentní volbu \(\tau\);
-8. propagaci úplného pole mezi časovými kroky.
+- `x = 0`: pevný rychlostní inlet s \(\rho=1\),
+  \(u_x=u_{\mathrm{inlet}}\) a \(u_y=0\);
+- `x = N_x-1`: pravý zero-gradient outlet, kde
+  \(f_i(x=N_x-1)=f_i(x=N_x-2)\).
 
-Bez těchto částí není možné interpretovat současný tlak jako fyzikální tlak
-na křídle ani z něj počítat vztlak a odpor.
+Horní a dolní okraj zůstávají periodické. Stejnou funkci
+`apply_channel_boundaries` používá klasický i hybridní solver, takže jejich
+okrajové podmínky jsou přímo porovnatelné.
+
+Pevný inletový sloupec `x=0` se ukládá do NPZ souborů, ale nezobrazuje se
+v PNG grafech, v animacích ani se nezapočítává do časových diagnostik.
+Vizualizace proto začínají první vnitřní buňkou `x=1`; numerický stav solveru
+zůstává kompletní a nezměněný.
+
+Pro validovanou simulaci obtékání křídla je ještě potřeba doplnit:
+
+1. bounce-back nebo interpolovanou no-slip podmínku na povrchu křídla;
+2. masku pevné oblasti `solid_mask.shape == (ny, nx)`;
+3. konzistentní volbu rozlišení, \(\tau\), viskozity a Reynoldsova čísla;
+4. aerodynamické síly, koeficienty vztlaku a odporu;
+5. validaci proti klasickému LBM nebo OpenFOAM;
+6. QPU error mitigation a snížení hloubky obvodu.
+
+Dokud tyto části a validační testy nejsou dokončené, nelze QPU tlak
+interpretovat jako spolehlivý tlak na křídle ani z něj určovat vztlak a odpor.
 
 ## IBM credentials
 

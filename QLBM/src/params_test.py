@@ -8,7 +8,7 @@ SHOW_RESULTS = True
 RESULT_PLOT = "output/qlbm_results_local.png"
 
 # Cells
-CELLS_SIZE = 4
+CELLS_SIZE = 16
 
 # Directions
 # 6  2  5
@@ -29,8 +29,8 @@ D = [
 ]
 D_NUMBER = 9
 
-REG_X_SIZE = 2
-REG_Y_SIZE = 2
+REG_X_SIZE = 4
+REG_Y_SIZE = 4
 REG_D_SIZE = 4
 
 INPUT_X = 1

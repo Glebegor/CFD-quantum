@@ -9,14 +9,19 @@ from time import perf_counter
 import numpy as np
 import qiskit as qk
 from qiskit.circuit.library import StatePreparation
-from qiskit.quantum_info import Statevector
 from qiskit.transpiler import generate_preset_pass_manager
+from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2 as Sampler
 
 import gates
 from animation import create_time_series_animation
 from functions import DecodeIndex, EncodeIndex
-from lbm_solver import equilibrium, physical_fields, save_snapshot
+from lbm_solver import (
+    apply_channel_boundaries,
+    equilibrium,
+    physical_fields,
+    save_snapshot,
+)
 from macrocomputations import reconstruct_fields
 
 
@@ -190,7 +195,15 @@ class HybridQLBM:
                 f,
                 measure=False,
             )
-            statevector = Statevector.from_instruction(circuit)
+            simulator = AerSimulator(method="statevector")
+            circuit.save_statevector()
+            compiled = qk.transpile(
+                circuit,
+                simulator,
+                optimization_level=3,
+            )
+            result = simulator.run(compiled).result()
+            statevector = result.get_statevector(compiled)
             probabilities = statevector.probabilities()
             self.last_circuit_metrics = {
                 "depth": circuit.decompose(reps=5).depth(),
@@ -221,12 +234,7 @@ class HybridQLBM:
         lattice_velocity = float(
             getattr(self.params, "HYBRID_LATTICE_INLET_VELOCITY", 0.03)
         )
-        inlet_density = np.ones((self.cells, 1), dtype=float)
-        inlet_velocity = np.zeros((self.cells, 1, 2), dtype=float)
-        inlet_velocity[..., 0] = lattice_velocity
-        f[:, :, :1] = equilibrium(inlet_density, inlet_velocity)
-        f[:, :, -1] = f[:, :, -2]
-        return f
+        return apply_channel_boundaries(f, lattice_velocity)
 
     def run(self):
         self.setup_backend()
@@ -283,7 +291,9 @@ class HybridQLBM:
                 reference_pressure,
                 velocity_scale,
             )
-            speed = np.linalg.norm(fields["velocity"], axis=-1)
+            plotted_density = fields["density"][:, 1:]
+            plotted_pressure = fields["pressure"][:, 1:]
+            plotted_speed = np.linalg.norm(fields["velocity"][:, 1:], axis=-1)
             time_seconds = step * output_dt
             metadata = {
                 "schema": "hybrid-qlbm-snapshot-v1",
@@ -291,16 +301,22 @@ class HybridQLBM:
                 "snapshot": step,
                 "time_seconds": time_seconds,
                 "grid": [self.cells, self.cells],
+                "boundaries": {
+                    "left": "fixed velocity inlet",
+                    "right": "zero-gradient outlet",
+                    "top_bottom": "periodic",
+                },
+                "plot_excludes_x_cells": [0],
                 "measurement_shots": shots if self.qpu else None,
                 "valid_direction_probability": valid_probability,
                 "postselection_probability": valid_probability,
                 "negative_population_mass_clipped": negative_mass,
                 "job_id": self.last_job_id,
                 "circuit": self.last_circuit_metrics,
-                "mean_density_kg_m3": float(fields["density"].mean()),
-                "max_velocity_m_s": float(speed.max()),
+                "mean_density_kg_m3": float(plotted_density.mean()),
+                "max_velocity_m_s": float(plotted_speed.max()),
                 "pressure_range_pa": float(
-                    fields["pressure"].max() - fields["pressure"].min()
+                    plotted_pressure.max() - plotted_pressure.min()
                 ),
             }
             history.append(metadata)
@@ -316,7 +332,7 @@ class HybridQLBM:
             print(
                 f"Hybrid {'QPU' if self.qpu else 'Aer'} "
                 f"{step}/{snapshots}: valid={valid_probability:.3%}, "
-                f"max|u|={speed.max():.4f} m/s"
+                f"max|u|={plotted_speed.max():.4f} m/s"
             )
 
         manifest = {
